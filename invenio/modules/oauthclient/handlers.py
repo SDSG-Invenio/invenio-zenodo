@@ -17,7 +17,7 @@
 ## along with Invenio; if not, write to the Free Software Foundation, Inc.,
 ## 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
 
-""" Handlers for customizing oauthclient endpoints. """
+"""Handlers for customizing oauthclient endpoints."""
 
 import six
 from functools import wraps, partial
@@ -39,13 +39,24 @@ from .forms import EmailSignUpForm
 #
 # Token handling
 #
+def get_session_next_url(remote_app):
+    return session.get(
+        "%s_%s" % (token_session_key(remote_app), "next_url")
+    )
+
+
+def set_session_next_url(remote_app, url):
+    session["%s_%s" % (token_session_key(remote_app), "next_url")] = \
+        url
+
+
 def token_session_key(remote_app):
-    """ Generate a session key used to store the token for a remote app. """
+    """Generate a session key used to store the token for a remote app."""
     return '%s_%s' % (cfg['OAUTHCLIENT_SESSION_KEY_PREFIX'], remote_app)
 
 
 def response_token_setter(remote, resp):
-    """ Extract token from response and set it for the user. """
+    """Extract token from response and set it for the user."""
     if resp is None:
         raise OAuthRejectedRequestError("User rejected request.", remote, resp)
     else:
@@ -62,7 +73,7 @@ def response_token_setter(remote, resp):
 
 
 def oauth1_token_setter(remote, resp, token_type='', extra_data=None):
-    """ Set an OAuth1 token. """
+    """Set an OAuth1 token."""
     return token_setter(
         remote,
         resp['oauth_token'],
@@ -73,7 +84,7 @@ def oauth1_token_setter(remote, resp, token_type='', extra_data=None):
 
 
 def oauth2_token_setter(remote, resp, token_type='', extra_data=None):
-    """ Set an OAuth2 token. """
+    """Set an OAuth2 token."""
     return token_setter(
         remote,
         resp['access_token'],
@@ -84,7 +95,7 @@ def oauth2_token_setter(remote, resp, token_type='', extra_data=None):
 
 
 def token_setter(remote, token, secret='', token_type='', extra_data=None):
-    """ Set token for user. """
+    """Set token for user."""
     session[token_session_key(remote.name)] = (token, secret)
 
     # Save token if used is authenticated
@@ -107,7 +118,7 @@ def token_setter(remote, token, secret='', token_type='', extra_data=None):
 
 
 def token_getter(remote, token=''):
-    """ Retrieve OAuth access token.
+    """Retrieve OAuth access token.
 
     Ued by flask-oauthlib to get the access token when making requests.
 
@@ -135,7 +146,7 @@ def token_getter(remote, token=''):
 
 
 def token_delete(remote, token=''):
-    """ Remove OAuth access tokens from session. """
+    """Remove OAuth access tokens from session."""
     session_key = token_session_key(remote.name)
     return session.pop(session_key, None)
 
@@ -144,7 +155,7 @@ def token_delete(remote, token=''):
 # Error handling decorators
 #
 def oauth_error_handler(f):
-    """ Decorator to handle exceptions. """
+    """Decorator to handle exceptions."""
     @wraps(f)
     def inner(*args, **kwargs):
         # OAuthErrors should not happen, so they are not caught here. Hence
@@ -168,7 +179,7 @@ def oauth_error_handler(f):
 #
 @oauth_error_handler
 def authorized_default_handler(resp, remote, *args, **kwargs):
-    """ Store access token in session.
+    """Store access token in session.
 
     Default authorized handler.
     """
@@ -178,7 +189,7 @@ def authorized_default_handler(resp, remote, *args, **kwargs):
 
 @oauth_error_handler
 def authorized_signup_handler(resp, remote, *args, **kwargs):
-    """ Handle sign-in/up functionality. """
+    """Handle sign-in/up functionality."""
     # Remove any previously stored auto register session key
     session.pop(token_session_key(remote.name)+'_autoregister', None)
 
@@ -209,7 +220,6 @@ def authorized_signup_handler(resp, remote, *args, **kwargs):
                 return redirect(url_for(
                     ".signup",
                     remote_app=remote.name,
-                    next=request.args.get('next', '/')
                 ))
 
         # Authenticate user
@@ -230,15 +240,16 @@ def authorized_signup_handler(resp, remote, *args, **kwargs):
         handlers['setup'](token)
 
     # Redirect to next
-    if request.args.get('next', None):
-        return redirect(request.args.get('next'))
+    next_url = get_session_next_url(remote.name)
+    if next_url:
+        return redirect(next_url)
     else:
         return redirect('/')
 
 
 @oauth_error_handler
 def disconnect_handler(remote, *args, **kwargs):
-    """ Handle unlinking of remote account.
+    """Handle unlinking of remote account.
 
     This default handler will just delete the remote account link. You may
     wish to extend this module to perform clean-up in the remote service
@@ -258,7 +269,7 @@ def disconnect_handler(remote, *args, **kwargs):
 
 
 def signup_handler(remote, *args, **kwargs):
-    """ Handle extra signup information. """
+    """Handle extra signup information."""
     # User already authenticated so move on
     if current_user.is_authenticated():
         return redirect("/")
@@ -300,8 +311,9 @@ def signup_handler(remote, *args, **kwargs):
             handlers['setup'](token)
 
         # Redirect to next
-        if request.args.get('next', None):
-            return redirect(request.args.get('next'))
+        next_url = get_session_next_url(remote.name)
+        if next_url:
+            return redirect(next_url)
         else:
             return redirect('/')
 
@@ -318,7 +330,7 @@ def signup_handler(remote, *args, **kwargs):
 
 
 def oauth_logout_handler(sender_app, user=None):
-    """ Remove all access tokens from session on logout. """
+    """Remove all access tokens from session on logout."""
     for remote in oauth.remote_apps.values():
         token_delete(remote)
 
@@ -327,7 +339,7 @@ def oauth_logout_handler(sender_app, user=None):
 # Helpers
 #
 def make_handler(f, remote, with_response=True):
-    """ Make a handler for authorized and disconnect callbacks.
+    """Make a handler for authorized and disconnect callbacks.
 
     :param f: Callable or an import path to a callable
     """
@@ -344,7 +356,7 @@ def make_handler(f, remote, with_response=True):
 
 
 def make_token_getter(remote):
-    """ Make a token getter for a remote application. """
+    """Make a token getter for a remote application."""
     return partial(token_getter, remote)
 
 
